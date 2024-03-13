@@ -4,11 +4,11 @@
  Author:	Dang
 */
 #include "Timer.h" 
-Timer TempTimer; 
+Timer RefreshTimer; 
 
 #define FAN_SENSOR_PIN 2
-#define FAN_PWM_PIN 3
-#define PUMP_SENSOR_PIN 4
+#define PUMP_SENSOR_PIN 3
+#define FAN_PWM_PIN 4
 #define PUMP_PWM_PIN 5
 
 #define ROOM_TEMP_PIN A3
@@ -20,7 +20,8 @@ const float ABSOLUTE_ZERO = 273.15; //絕對零度
 String UartData = "";
 float tRoom, tIn, tOut;
 
-volatile unsigned long PwmCounter = 0;
+volatile unsigned long FanPwmCounter = 0;
+volatile unsigned long PumpPwmCounter = 0;
 
 void setup(void)
 {
@@ -29,37 +30,51 @@ void setup(void)
     pinMode(WATER_OUT_TEMP_PIN, INPUT);
 	pinMode(FAN_PWM_PIN, OUTPUT);
 	pinMode(PUMP_PWM_PIN, OUTPUT);
-    //attachInterrupt(digitalPinToInterrupt(FAN_SENSOR_PIN), countPulses, FALLING);
+    attachInterrupt(digitalPinToInterrupt(FAN_SENSOR_PIN), FanPwmCountPulses, FALLING);
+    attachInterrupt(digitalPinToInterrupt(PUMP_SENSOR_PIN), PumpPwmCountPulses, FALLING);
 	Serial.begin(9600);
-    TempTimer.every(500, UpdateTemp);
+    RefreshTimer.every(500, DataUpdateEvent);
     analogWrite(FAN_PWM_PIN, 30);
     analogWrite(PUMP_PWM_PIN, 0);
 }
 
 void loop(void)
 {
-    //讀Serial port data
-    TempTimer.update();
+    RefreshTimer.update();
     ReadSerial();
-
-    ////pwm control
-    //auto pwm = PercentageToHex(50);
-    //analogWrite(FAN_PWM_PIN, pwm);
-
-    ////fan RPM read
-    //long rpm = PwmCounter * 60 / 2;
-    //Serial.println(PwmCounter);
-    //Serial.print("RPM:");
-    //Serial.println(rpm);
-    //PwmCounter = 0;
 }
 
-void UpdateTemp()
+/// <summary>
+/// 更新資料
+/// </summary>
+void DataUpdateEvent()
 {
+    ReadPwm();
     ReadRoomTemp();
     ReadWaterInTemp();
     ReadWaterOutTemp();
 }
+
+/// <summary>
+/// 讀PWM訊號換轉速
+/// </summary>
+void ReadPwm()
+{
+    long rpm1 = FanPwmCounter * 60;
+    long rpm2 = PumpPwmCounter * 60;
+    
+    Serial.print("f");
+    Serial.print(rpm1);
+    Serial.print(",");
+
+    Serial.print("p");
+    Serial.print(rpm2);
+    Serial.print(",");
+
+    FanPwmCounter = 0;
+    PumpPwmCounter = 0;
+}
+
 
 /// <summary>
 /// read serial port
@@ -137,9 +152,14 @@ int PercentageToHex(float pwmPercentage)
     return pwmPercentage * 2.55f;
 }
 
-void countPulses() 
+void FanPwmCountPulses() 
 {
-    PwmCounter++;
+    FanPwmCounter++;
+}
+
+void PumpPwmCountPulses()
+{
+    PumpPwmCounter++;
 }
 
 /// <summary>
