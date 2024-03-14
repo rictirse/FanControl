@@ -4,6 +4,10 @@
  Author:	Dang
 */
 #include "Timer.h" 
+#include <ArduinoJson.h>
+
+StaticJsonDocument<200> json_doc;
+char json_output[100];
 Timer RefreshTimer; 
 
 #define FAN_SENSOR_PIN 2
@@ -18,7 +22,6 @@ Timer RefreshTimer;
 const float R1 = 10000.0; //參考電阻阻抗
 const float ABSOLUTE_ZERO = 273.15; //絕對零度
 String UartData = "";
-float tRoom, tIn, tOut;
 
 volatile unsigned long FanPwmCounter = 0;
 volatile unsigned long PumpPwmCounter = 0;
@@ -32,7 +35,7 @@ void setup(void)
 	pinMode(PUMP_PWM_PIN, OUTPUT);
     attachInterrupt(digitalPinToInterrupt(FAN_SENSOR_PIN), FanPwmCountPulses, FALLING);
     attachInterrupt(digitalPinToInterrupt(PUMP_SENSOR_PIN), PumpPwmCountPulses, FALLING);
-	Serial.begin(9600);
+	Serial.begin(115200);
     RefreshTimer.every(500, DataUpdateEvent);
     analogWrite(FAN_PWM_PIN, 30);
     analogWrite(PUMP_PWM_PIN, 0);
@@ -53,23 +56,17 @@ void DataUpdateEvent()
     ReadRoomTemp();
     ReadWaterInTemp();
     ReadWaterOutTemp();
+    serializeJson(json_doc, json_output);
+    Serial.println(json_output);
 }
 
 /// <summary>
 /// 讀PWM訊號換轉速
 /// </summary>
 void ReadPwm()
-{
-    long rpm1 = FanPwmCounter * 60;
-    long rpm2 = PumpPwmCounter * 60;
-    
-    Serial.print("f");
-    Serial.print(rpm1);
-    Serial.print(",");
-
-    Serial.print("p");
-    Serial.print(rpm2);
-    Serial.print(",");
+{ 
+    json_doc["pumpRPM"] = FanPwmCounter * 60;
+    json_doc["fanRPM"] = PumpPwmCounter * 60;
 
     FanPwmCounter = 0;
     PumpPwmCounter = 0;
@@ -172,11 +169,8 @@ void ReadRoomTemp()
     const float Ro = 11490.0f; //熱敏電阻室溫阻抗值
 
     int analog_output = analogRead(ROOM_TEMP_PIN);
-    tRoom = B_parameter_equation(analog_output, Beta, RoomTemp, Ro);
 
-    Serial.print("r");
-    Serial.print(tRoom);
-    Serial.print(",");
+    json_doc["room"] = B_parameter_equation(analog_output, Beta, RoomTemp, Ro);
 }
 
 /// <summary>
@@ -188,10 +182,7 @@ void ReadWaterInTemp()
     const float RoomTemp = 294.45; //室溫
     const float Ro = 11490.0; //熱敏電阻室溫阻抗值
 
-    tIn = 35.0;
-    Serial.print("i");
-    Serial.print(tIn);
-    Serial.print(",");
+    json_doc["waterIn"] = 35.0;
 }
 
 /// <summary>
@@ -203,10 +194,7 @@ void ReadWaterOutTemp()
     const float RoomTemp = 294.45; //室溫
     const float Ro = 11490.0; //熱敏電阻室溫阻抗值
 
-    tOut = 40.0;
-    Serial.print("o");
-    Serial.print(tOut);
-    Serial.print(",");
+    json_doc["waterOut"] = 40.0;
 }
 
 /// <summary>
