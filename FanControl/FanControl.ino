@@ -14,6 +14,7 @@ Timer RefreshTimer;
 #define PUMP_SENSOR_PIN 3
 #define FAN_PWM_PIN 4
 #define PUMP_PWM_PIN 5
+#define FAN_RELAY_PIN 7
 
 #define ROOM_TEMP_PIN A3
 #define WATER_IN_TEMP_PIN A4
@@ -33,6 +34,7 @@ void setup(void)
     pinMode(WATER_OUT_TEMP_PIN, INPUT);
 	pinMode(FAN_PWM_PIN, OUTPUT);
 	pinMode(PUMP_PWM_PIN, OUTPUT);
+	pinMode(FAN_RELAY_PIN, OUTPUT);
     attachInterrupt(digitalPinToInterrupt(FAN_SENSOR_PIN), FanPwmCountPulses, FALLING);
     attachInterrupt(digitalPinToInterrupt(PUMP_SENSOR_PIN), PumpPwmCountPulses, FALLING);
 	Serial.begin(115200);
@@ -65,8 +67,8 @@ void DataUpdateEvent()
 /// </summary>
 void ReadPwm()
 { 
-    json_doc["pumpRPM"] = FanPwmCounter * 60;
-    json_doc["fanRPM"] = PumpPwmCounter * 60;
+    json_doc["pumpRPM"] = FanPwmCounter * 30;
+    json_doc["fanRPM"] = PumpPwmCounter * 30;
 
     FanPwmCounter = 0;
     PumpPwmCounter = 0;
@@ -112,17 +114,17 @@ int SetPwm(String cmd)
 {
     if (cmd.length() < 2) return;
 
+    float pwmValue = 0;
     if (cmd[0] == 'f') //fan
     {
-        //Serial.print("set fan ");
-        //Serial.println(cmd);
-        analogWrite(FAN_PWM_PIN, ParseFanValue(cmd));
+        pwmValue = ParseFanValue(cmd);
+        digitalWrite(FAN_RELAY_PIN, pwmValue == 0 ? LOW : HIGH);
+        analogWrite(FAN_PWM_PIN, pwmValue);
     }
     else if (cmd[0] == 'p') //pump
     {
-        //Serial.print("set pump ");
-        //Serial.println(cmd);
-        analogWrite(PUMP_PWM_PIN, ParseFanValue(cmd));
+        pwmValue = ParseFanValue(cmd);
+        analogWrite(PUMP_PWM_PIN, pwmValue);
     }
 }
 
@@ -134,10 +136,9 @@ int SetPwm(String cmd)
 int ParseFanValue(String cmd)
 {
     int value = cmd.substring(1, UartData.length()).toInt();
-    Serial.println(value);
+    //Serial.println(value);
     return PercentageToHex(value);
 }
-
 
 /// <summary>
 /// 風扇轉速(百分比)轉PWM訊號(0-255)
@@ -179,10 +180,12 @@ void ReadRoomTemp()
 void ReadWaterInTemp()
 {
     const float Beta = 3974.0; //B parameter
-    const float RoomTemp = 294.45; //室溫
-    const float Ro = 11490.0; //熱敏電阻室溫阻抗值
+    const float RoomTemp = 301.85f; //室溫
+    const float Ro = 8560; //熱敏電阻室溫阻抗值
 
-    json_doc["waterIn"] = 35.0;
+    int analog_output = analogRead(WATER_IN_TEMP_PIN);
+
+    json_doc["waterIn"] = B_parameter_equation(analog_output, Beta, RoomTemp, Ro);
 }
 
 /// <summary>
@@ -191,10 +194,12 @@ void ReadWaterInTemp()
 void ReadWaterOutTemp()
 {
     const float Beta = 3974.0; //B parameter
-    const float RoomTemp = 294.45; //室溫
-    const float Ro = 11490.0; //熱敏電阻室溫阻抗值
+    const float RoomTemp = 301.85f; //室溫
+    const float Ro = 8440; //熱敏電阻室溫阻抗值
 
-    json_doc["waterOut"] = 40.0;
+    int analog_output = analogRead(WATER_OUT_TEMP_PIN);
+
+    json_doc["waterOut"] = B_parameter_equation(analog_output, Beta, RoomTemp, Ro);
 }
 
 /// <summary>
