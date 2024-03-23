@@ -8,17 +8,17 @@
 
 StaticJsonDocument<200> json_doc;
 char json_output[100];
-Timer RefreshTimer; 
+Timer RefreshTimer;
 
 #define FAN_SENSOR_PIN 2
 #define PUMP_SENSOR_PIN 3
-#define FAN_PWM_PIN 4
-#define PUMP_PWM_PIN 5
-#define FAN_RELAY_PIN 7
+#define PUMP_PWM_PIN 6 //OC4B
+#define FAN_PWM_PIN 7 //OC4C
+#define FAN_RELAY_PIN 52
 
-#define ROOM_TEMP_PIN A3
-#define WATER_IN_TEMP_PIN A4
-#define WATER_OUT_TEMP_PIN A5
+#define ROOM_TEMP_PIN A2
+#define WATER_IN_TEMP_PIN A3
+#define WATER_OUT_TEMP_PIN A4
 
 const float R1 = 10000.0; //參考電阻阻抗
 const float ABSOLUTE_ZERO = 273.15; //絕對零度
@@ -27,23 +27,33 @@ String UartData = "";
 volatile unsigned long FanPwmCounter = 0;
 volatile unsigned long PumpPwmCounter = 0;
 
-void setup(void)
+void setup()
 {
+    TCCR4A = 0;
+    TCCR4B = 0;
+    TCNT4 = 0;
+    //設定MUC Timer 
+    ICR4 = (F_CPU / 25000) / 2;
+    TCCR4A = _BV(COM4C1) | _BV(WGM41);
+    TCCR4B = _BV(WGM43) | _BV(CS40);
+
+    Serial.begin(115200);
+
     pinMode(ROOM_TEMP_PIN, INPUT);
     pinMode(WATER_IN_TEMP_PIN, INPUT);
     pinMode(WATER_OUT_TEMP_PIN, INPUT);
-	pinMode(FAN_PWM_PIN, OUTPUT);
-	pinMode(PUMP_PWM_PIN, OUTPUT);
-	pinMode(FAN_RELAY_PIN, OUTPUT);
+    pinMode(FAN_PWM_PIN, OUTPUT);
+    pinMode(PUMP_PWM_PIN, OUTPUT);
+    pinMode(FAN_RELAY_PIN, OUTPUT);
     attachInterrupt(digitalPinToInterrupt(FAN_SENSOR_PIN), FanPwmCountPulses, FALLING);
     attachInterrupt(digitalPinToInterrupt(PUMP_SENSOR_PIN), PumpPwmCountPulses, FALLING);
-	Serial.begin(115200);
+
     RefreshTimer.every(500, DataUpdateEvent);
-    analogWrite(FAN_PWM_PIN, 30);
-    analogWrite(PUMP_PWM_PIN, 0);
+    analogWrite(PUMP_PWM_PIN, 32);
+    analogWrite(FAN_PWM_PIN, 32);
 }
 
-void loop(void)
+void loop()
 {
     RefreshTimer.update();
     ReadSerial();
@@ -66,14 +76,13 @@ void DataUpdateEvent()
 /// 讀PWM訊號換轉速
 /// </summary>
 void ReadPwm()
-{ 
-    json_doc["pumpRPM"] = FanPwmCounter * 30;
-    json_doc["fanRPM"] = PumpPwmCounter * 30;
+{
+    json_doc["fanRPM"] = FanPwmCounter * 30;
+    json_doc["pumpRPM"] = PumpPwmCounter * 30;
 
     FanPwmCounter = 0;
     PumpPwmCounter = 0;
 }
-
 
 /// <summary>
 /// read serial port
@@ -118,7 +127,7 @@ int SetPwm(String cmd)
     if (cmd[0] == 'f') //fan
     {
         pwmValue = ParseFanValue(cmd);
-        digitalWrite(FAN_RELAY_PIN, pwmValue == 0 ? LOW : HIGH);
+        digitalWrite(FAN_RELAY_PIN, pwmValue > 32 ? HIGH : LOW);
         analogWrite(FAN_PWM_PIN, pwmValue);
     }
     else if (cmd[0] == 'p') //pump
@@ -129,7 +138,9 @@ int SetPwm(String cmd)
 }
 
 /// <summary>
-/// 讀Uart data 解析出風扇強度
+/// 讀Uart data 解析出風扇強度 
+/// 低於輸出32 (約10%)回應32
+/// 修改過MUC Timer所以PWM強度是 0-320
 /// </summary>
 /// <param name="pos"></param>
 /// <returns></returns>
@@ -137,7 +148,9 @@ int ParseFanValue(String cmd)
 {
     int value = cmd.substring(1, UartData.length()).toInt();
     //Serial.println(value);
-    return PercentageToHex(value);
+    value = PercentageToHex(value);
+    value = value > 32 ? value : 32;
+    return value;
 }
 
 /// <summary>
@@ -150,7 +163,7 @@ int PercentageToHex(float pwmPercentage)
     return pwmPercentage * 2.55f;
 }
 
-void FanPwmCountPulses() 
+void FanPwmCountPulses()
 {
     FanPwmCounter++;
 }
